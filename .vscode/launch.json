@@ -14,7 +14,7 @@
             "args": [
                 "--data-dir", "data/KRW-BTC",
                 "--sweep", "sweep.yaml",
-                "--sample-k", "30",
+                "--sample-k", "7",
                 // "--random-seed", "1230"
             ],
         }

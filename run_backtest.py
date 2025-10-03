@@ -1,104 +1,20 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 
-import numpy as np
-import pandas as pd
+import warnings
 
 from coin_trade.backtester import BacktestResult, run_backtest
+from coin_trade.cli_utils import load_structured, parse_key_value
 from coin_trade.data import load_random_data
+from coin_trade.io_utils import ensure_output_dir, load_price_data, maybe_filter, save_artifacts
 from coin_trade.plotting import render_trades_plot
+from coin_trade.reporting import format_metric, summarize_metrics
 from coin_trade.signals import AutoThrottleConfig, Mode, StrategyParams, DEFAULT_THROTTLE
 
-try:
-    import yaml  # type: ignore
-except Exception:  # pragma: no cover - optional dependency
-    yaml = None
-
-import warnings
 warnings.filterwarnings("ignore")
-
-def parse_key_value(pairs: Optional[Iterable[str]]) -> Dict[str, Any]:
-    result: Dict[str, Any] = {}
-    if not pairs:
-        return result
-
-    for pair in pairs:
-        if "=" not in pair:
-            raise ValueError(f"Override '{pair}' must be in key=value format")
-        key, value = pair.split("=", 1)
-        key = key.strip()
-        value = value.strip()
-        if value.lower() in {"true", "false"}:
-            parsed: Any = value.lower() == "true"
-        else:
-            try:
-                if "." in value:
-                    parsed = float(value)
-                    if isinstance(parsed, float) and parsed.is_integer():
-                        parsed = int(parsed)
-                else:
-                    parsed = int(value)
-            except ValueError:
-                try:
-                    parsed = float(value)
-                except ValueError:
-                    parsed = value
-        result[key] = parsed
-    return result
-
-
-def load_structured(path: Optional[str]) -> Optional[Any]:
-    if path is None:
-        return None
-    data_path = Path(path)
-    text = data_path.read_text(encoding="utf-8")
-    suffix = data_path.suffix.lower()
-    if suffix == ".json":
-        return json.loads(text)
-    if suffix in {".yml", ".yaml"}:
-        if yaml is None:
-            raise RuntimeError("PyYAML is required to read YAML files. Install with 'pip install pyyaml'.")
-        return yaml.safe_load(text)
-    raise ValueError(f"Unsupported config format for {path}")
-
-
-def load_price_data(path: str) -> pd.DataFrame:
-    data_path = Path(path)
-    if not data_path.exists():
-        raise FileNotFoundError(path)
-
-    if data_path.suffix.lower() == ".csv":
-        df = pd.read_csv(data_path)
-    elif data_path.suffix.lower() in {".parquet", ".pq"}:
-        df = pd.read_parquet(data_path)
-    else:
-        raise ValueError("Data file must be CSV or Parquet")
-
-    df.columns = [c.lower() for c in df.columns]
-
-    if isinstance(df.index, pd.DatetimeIndex):
-        pass
-    elif "timestamp" in df.columns:
-        df["timestamp"] = pd.to_datetime(df["timestamp"], utc=False)
-        df = df.set_index("timestamp")
-    elif "datetime" in df.columns:
-        df["datetime"] = pd.to_datetime(df["datetime"], utc=False)
-        df = df.set_index("datetime")
-    else:
-        first_col = df.columns[0]
-        df[first_col] = pd.to_datetime(df[first_col], utc=False)
-        df = df.set_index(first_col)
-
-    required = {"open", "high", "low", "close", "volume"}
-    missing = required - set(df.columns)
-    if missing:
-        raise ValueError(f"Data file missing required columns: {missing}")
-
-    return df.sort_index()
 
 
 def apply_strategy_overrides(params: StrategyParams, overrides: Dict[str, Any]) -> None:
@@ -115,65 +31,18 @@ def apply_throttle_overrides(cfg: AutoThrottleConfig, overrides: Dict[str, Any])
         setattr(cfg, key, value)
 
 
-def ensure_output_dir(path: str) -> Path:
-    output = Path(path)
-    output.mkdir(parents=True, exist_ok=True)
-    return output
-
-
-def summarize_metrics(result: BacktestResult) -> Dict[str, Any]:
-    metrics = result.metrics.metrics
-    return {
-        "trade_count": metrics.get("trade_count"),
-        "trades_per_day": metrics.get("trades_per_day"),
-        "win_rate": metrics.get("win_rate"),
-        "profit_factor": metrics.get("profit_factor"),
-        "net_return_pct": metrics.get("net_return_pct"),
-        "max_drawdown_pct": metrics.get("max_drawdown_pct"),
-        "sharpe": metrics.get("sharpe"),
-        "exposure": metrics.get("exposure"),
-    }
-
-
-def format_metric(value: Any) -> str:
-    if value is None or (isinstance(value, float) and np.isnan(value)):
-        return "N/A"
-    if isinstance(value, float):
-        return f"{value:.4f}"
-    return str(value)
-
-
-def save_artifacts(result: BacktestResult, output_dir: Path, *, prefix: str = "") -> None:
-    trades_path = output_dir / f"{prefix}trades.csv"
-    equity_path = output_dir / f"{prefix}equity.csv"
-    metrics_path = output_dir / f"{prefix}metrics.json"
-
-    result.trades.to_csv(trades_path, index=False)
-    result.equity.to_csv(equity_path, index=True)
-    with open(metrics_path, "w", encoding="utf-8") as fh:
-        json.dump(result.metrics.metrics, fh, indent=2)
-
-
-def maybe_filter(df: pd.DataFrame, start: Optional[str], end: Optional[str]) -> pd.DataFrame:
-    if start:
-        df = df[df.index >= pd.to_datetime(start)]
-    if end:
-        df = df[df.index <= pd.to_datetime(end)]
-    return df
-
-
 def run_single_backtest(
-    price_df: pd.DataFrame,
+    price_df,
     *,
-    params: StrategyParams,
-    throttle: AutoThrottleConfig,
-    mode: Mode,
-    fees: float,
-    slip: float,
-    priority: str,
-    entry_df: Optional[pd.DataFrame],
-    min_trades: int,
-) -> BacktestResult:
+    params,
+    throttle,
+    mode,
+    fees,
+    slip,
+    priority,
+    entry_df,
+    min_trades,
+):
     return run_backtest(
         price_df,
         params=params,
@@ -187,11 +56,12 @@ def run_single_backtest(
     )
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Rule-based Bitcoin backtester")
     parser.add_argument("--data-dir", default="data", help="Directory containing 15m CSV files")
     parser.add_argument("--sample-k", type=int, default=1, help="Number of CSV files to sample")
     parser.add_argument("--random-seed", type=int, help="Seed for deterministic sampling")
+    parser.add_argument("--min-rows", type=int, default=60, help="Minimum rows required per sampled file")
     parser.add_argument("--entry-data", help="Optional higher-frequency dataset for entry prices")
     parser.add_argument("--mode", choices=["production", "research"], default="production")
     parser.add_argument("--fees", type=float, default=0.0005, help="Per-side fee rate")
@@ -206,13 +76,18 @@ def main() -> None:
     parser.add_argument("--plot-trade-index", type=int, help="Render Plotly for a specific trade index")
     parser.add_argument("--start", help="Filter data from this datetime (inclusive)")
     parser.add_argument("--end", help="Filter data up to this datetime (inclusive)")
+    return parser
 
-    args = parser.parse_args()
+
+def main(argv: Optional[Iterable[str]] = None) -> None:
+    parser = build_parser()
+    args = parser.parse_args(argv)
 
     price_df, sampled_paths = load_random_data(
         data_dir=args.data_dir,
         sample_k=args.sample_k,
         random_seed=args.random_seed,
+        min_rows=args.min_rows,
     )
     price_df = maybe_filter(price_df, args.start, args.end)
     if price_df.empty:
@@ -321,6 +196,8 @@ def main() -> None:
             records.append(record)
 
         if records:
+            import pandas as pd
+
             summary_path = output_dir / "sweep_summary.csv"
             pd.DataFrame(records).to_csv(summary_path, index=False)
     else:
@@ -329,4 +206,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

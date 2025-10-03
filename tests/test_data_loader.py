@@ -27,8 +27,8 @@ def test_load_random_data_deterministic(tmp_path):
     for i in range(3):
         _write_csv(data_dir / f'asset_{i}.csv', start=f'2024-01-0{i+1} 00:00:00')
 
-    df1, files1 = load_random_data(str(data_dir), sample_k=2, random_seed=42)
-    df2, files2 = load_random_data(str(data_dir), sample_k=2, random_seed=42)
+    df1, files1 = load_random_data(str(data_dir), sample_k=2, random_seed=42, min_rows=10)
+    df2, files2 = load_random_data(str(data_dir), sample_k=2, random_seed=42, min_rows=10)
 
     assert [f.name for f in files1] == [f.name for f in files2]
     assert not df1.empty
@@ -42,7 +42,7 @@ def test_load_random_data_nested_directories(tmp_path):
     _write_csv(data_dir / 'KRW-BTC' / '20240101.csv', start='2024-01-01 00:00:00')
     _write_csv(data_dir / 'KRW-ETH' / '20240102.csv', start='2024-01-02 00:00:00')
 
-    df, files = load_random_data(str(data_dir), sample_k=2, random_seed=0)
+    df, files = load_random_data(str(data_dir), sample_k=2, random_seed=0, min_rows=10)
     assert len(files) == 2
     assert {f.parent.name for f in files} == {'KRW-BTC', 'KRW-ETH'}
     assert not df.empty
@@ -74,4 +74,4 @@ def test_load_random_data_invalid_frequency(tmp_path):
     df.to_csv(data_dir / 'bad.csv', index=False)
 
     with pytest.raises(ValueError):
-        load_random_data(str(data_dir))
+        load_random_data(str(data_dir), min_rows=10)

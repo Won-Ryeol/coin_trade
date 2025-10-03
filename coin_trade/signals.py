@@ -56,11 +56,11 @@ class StrategyParams:
     max_sl_pct: float = 0.03
     max_tp_pct: float = 0.06
     daily_return_lookback: int = 96
-    daily_return_floor: float = -0.012
-    daily_return_floor_reversion: float = -0.02
-    max_stopouts_per_day: int = 3
+    daily_return_floor: float = -0.015
+    daily_return_floor_reversion: float = -0.025
+    max_stopouts_per_day: int = 2
     daily_loss_cap_pct: float = 0.02
-    time_stop_bars: int = 64
+    time_stop_bars: int = 96
 
 
 @dataclass
@@ -224,7 +224,36 @@ def generate_signals(
     else:
         rsi_series = pd.Series(np.nan, index=df.index)
 
-    rr = np.where(adx_series >= params.adx_rr_threshold, params.rr_high, params.rr_low)
+    rr_base = np.where(adx_series >= params.adx_rr_threshold, params.rr_high, params.rr_low)
+    slope_norm = ema_long_slope_pct.fillna(0.0)
+    rr_dynamic = np.where(
+        slope_norm >= 0.003,
+        params.rr_high + 0.4,
+        np.where(
+            slope_norm >= 0.0015,
+            params.rr_high,
+            np.where(
+                slope_norm <= -0.001,
+                np.maximum(params.rr_low - 0.4, 1.05),
+                rr_base
+            )
+        )
+    )
+    rr_dynamic = np.clip(rr_dynamic, 1.05, params.rr_high + 0.6)
+
+    rev_rr = np.where(
+        slope_norm <= -0.0015,
+        0.9,
+        np.where(
+            slope_norm >= 0.0025,
+            1.6,
+            np.where(
+                slope_norm >= 0.0015,
+                1.4,
+                1.1
+            )
+        )
+    )
 
     target_mid = (params.target_sl_low + params.target_sl_high) / 2
     base_sl = atr_pct_ema.replace(0, np.nan)
@@ -236,8 +265,8 @@ def generate_signals(
     sl_break = (adaptive_sl * 1.05 + buffer).clip(upper=params.max_sl_pct)
     sl_rev = (adaptive_sl * 0.90 + buffer).clip(upper=params.max_sl_pct)
 
-    tp_break = (sl_break * rr + buffer).clip(upper=params.max_tp_pct)
-    tp_rev = (sl_rev * 1.30 + buffer).clip(upper=params.max_tp_pct)
+    tp_break = (sl_break * rr_dynamic + buffer).clip(upper=params.max_tp_pct)
+    tp_rev = (sl_rev * rev_rr + buffer).clip(upper=params.max_tp_pct)
 
     n = len(df)
     buy_signal = np.zeros(n, dtype=bool)
@@ -258,24 +287,25 @@ def generate_signals(
         squeeze_pct_eff = float(np.clip(params.squeeze_pct + (-limits.bias) * throttle_config.squeeze_step, 0.05, 0.95))
         vol_mult_eff = max(0.1, params.volume_multiplier * (1.0 + throttle_config.volume_step * limits.bias))
 
-        daily_floor_eff = np.clip(params.daily_return_floor + limits.bias * 0.004, -0.05, 0.02)
-        rev_floor_eff = np.clip(params.daily_return_floor_reversion + limits.bias * 0.004, -0.08, 0.01)
+        daily_floor_eff = np.clip(params.daily_return_floor + limits.bias * 0.004, -0.03, 0.04)
+        rev_floor_eff = np.clip(params.daily_return_floor_reversion + limits.bias * 0.004, -0.12, -0.001)
+        rev_floor_eff = min(rev_floor_eff, -0.003)
 
         slope_val = float(ema_long_slope_pct.iloc[i]) if pd.notna(ema_long_slope_pct.iloc[i]) else np.nan
         trend_ok = (
             df["close"].iloc[i] >= ema_trend.iloc[i]
             and df["close"].iloc[i] >= ema_long.iloc[i]
             and np.isfinite(slope_val)
-            and slope_val > 0
+            and slope_val > -0.002
         )
         reversion_trend_ok = (
             df["close"].iloc[i] >= ema_trend.iloc[i] * 0.985
             and np.isfinite(slope_val)
-            and slope_val > -0.001
+            and -0.03 <= slope_val < 0.012
         )
 
-        context_ok = daily_return.iloc[i] >= daily_floor_eff
-        rev_context_ok = daily_return.iloc[i] >= rev_floor_eff
+        context_ok = daily_return.iloc[i] >= max(daily_floor_eff, -0.05)
+        rev_context_ok = (daily_return.iloc[i] <= (rev_floor_eff + 0.01)) or (params.enable_mean_reversion and rsi_series.iloc[i] <= params.rsi_buy_threshold - 5)
 
         breakout = bool(
             in_kc.iloc[i]

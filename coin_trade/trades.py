@@ -81,6 +81,8 @@ def build_trades(
         if not np.isfinite(tp_pct) or not np.isfinite(sl_pct):
             continue
 
+        sig_type = df.iloc[sig_idx].get("signal_type") if "signal_type" in df.columns else None
+
         entry_time = df.index[entry_idx]
         entry_day = entry_time.date()
 
@@ -155,6 +157,7 @@ def build_trades(
                 "cost_pct": float(cost_pct),
                 "outcome": outcome,
                 "holding_bars": int(holding_bars),
+                "signal_type": sig_type,
             }
         )
 
