@@ -1,0 +1,22 @@
+- label: relaxed_cooldown
+  strategy:
+    cooldown_bars: 2
+    squeeze_pct: 0.55
+    adx_threshold: 20
+    max_trades_per_day: 18
+  throttle:
+    target_trades_per_day_low: 6
+    target_trades_per_day_high: 12
+
+- label: aggressive_research
+  strategy:
+    cooldown_bars: 0
+    squeeze_pct: 0.70
+    adx_threshold: 16
+    max_trades_per_day: 40
+    enable_mean_reversion: true
+    enable_low_risk_reversion: true
+  throttle:
+    target_trades_per_day_low: 18
+    target_trades_per_day_high: 32
+    max_per_day: 70

@@ -1,0 +1,10 @@
+{
+  "trade_count": 46.0,
+  "trades_per_day": 1.15,
+  "exposure": 0.071765322158198,
+  "net_return_pct": 0.021019914954877095,
+  "max_drawdown_pct": -0.0583998987307891,
+  "sharpe": 0.7020917868597274,
+  "win_rate": 0.4782608695652174,
+  "profit_factor": 1.087876737989646
+}
