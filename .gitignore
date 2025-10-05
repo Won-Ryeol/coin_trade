@@ -2,3 +2,4 @@ data/**
 .vscode/**
 *.pyc
 __pycache__/
+artifacts/**

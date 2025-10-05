@@ -13,6 +13,7 @@
             "python": "C:\\Users\\wrk92\\anaconda3\\envs\\coin_dest\\python.exe",
             "args": [
                 "--data-dir", "data/KRW-BTC",
+                "--mode", "research",
                 "--sweep", "sweep.yaml",
                 "--sample-k", "120",
                 // "--random-seed", "1230"

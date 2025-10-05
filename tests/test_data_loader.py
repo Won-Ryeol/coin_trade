@@ -75,3 +75,16 @@ def test_load_random_data_invalid_frequency(tmp_path):
 
     with pytest.raises(ValueError):
         load_random_data(str(data_dir), min_rows=10)
+
+def test_load_random_data_skips_large_gap(tmp_path):
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    _write_csv(data_dir / 'asset_0.csv', start='2024-01-01 00:00:00')
+    _write_csv(data_dir / 'asset_1.csv', start='2024-01-02 00:00:00')
+    _write_csv(data_dir / 'asset_far.csv', start='2024-03-10 00:00:00')
+
+    df, files = load_random_data(str(data_dir), sample_k=2, random_seed=0, min_rows=10)
+
+    assert [f.name for f in files] == ['asset_0.csv', 'asset_1.csv']
+    max_gap = df.index.to_series().diff().dropna().max()
+    assert max_gap <= pd.Timedelta(days=1)
