@@ -76,6 +76,7 @@ def test_cooldown_enforces_spacing():
     throttle = _frozen_throttle()
 
     signals = generate_signals(df, params, mode="production", throttle_config=throttle)
+    assert "regime" in signals.columns
     idx = np.flatnonzero(signals["buy_signal"].to_numpy())
     if len(idx) > 1:
         diffs = np.diff(idx)

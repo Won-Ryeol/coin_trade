@@ -15,6 +15,7 @@ from .indicators import (
     pct_rank,
     rsi,
 )
+from .regime import RegimeConfig, detect_regime
 
 Mode = Literal["production", "research"]
 
@@ -61,6 +62,22 @@ class StrategyParams:
     max_stopouts_per_day: int = 2
     daily_loss_cap_pct: float = 0.02
     time_stop_bars: int = 96
+    enable_regime_filter: bool = True
+    regime_default: str = "trend"
+    regime_adx_window: int = 14
+    regime_adx_trend: float = 27.0
+    regime_adx_range: float = 20.0
+    regime_slope_ema_span: int = 96
+    regime_slope_lookback: int = 8
+    regime_slope_trend: float = 0.0015
+    regime_slope_range: float = 0.0006
+    regime_vol_fast_window: int = 20
+    regime_vol_slow_window: int = 60
+    regime_vol_ratio_trend: float = 1.10
+    regime_vol_ratio_range: float = 0.95
+    regime_min_trend_votes: int = 2
+    regime_min_range_votes: int = 2
+    regime_switch_cooldown: int = 12
 
 
 @dataclass
@@ -219,6 +236,46 @@ def generate_signals(
     daily_return = df["close"] / df["close"].shift(params.daily_return_lookback) - 1
     daily_return = daily_return.fillna(0.0)
 
+    regime_config = RegimeConfig(
+        enable=params.enable_regime_filter,
+        default_regime=params.regime_default if params.regime_default in ("trend", "range") else "trend",
+        adx_window=params.regime_adx_window,
+        adx_trend_threshold=params.regime_adx_trend,
+        adx_range_threshold=params.regime_adx_range,
+        slope_ema_span=params.regime_slope_ema_span,
+        slope_lookback=params.regime_slope_lookback,
+        slope_trend_threshold=params.regime_slope_trend,
+        slope_range_threshold=params.regime_slope_range,
+        vol_fast_window=params.regime_vol_fast_window,
+        vol_slow_window=params.regime_vol_slow_window,
+        vol_ratio_trend=params.regime_vol_ratio_trend,
+        vol_ratio_range=params.regime_vol_ratio_range,
+        min_trend_votes=params.regime_min_trend_votes,
+        min_range_votes=params.regime_min_range_votes,
+        switch_cooldown=params.regime_switch_cooldown,
+    )
+
+    regime_result = detect_regime(
+        df,
+        regime_config,
+        adx_series=adx_series,
+        ema_long=ema_long,
+    )
+    regime_series = regime_result.labels
+    trend_vote_series = regime_result.trend_votes
+    range_vote_series = regime_result.range_votes
+    df["regime"] = regime_series
+    df["regime_trend_votes"] = trend_vote_series
+    df["regime_range_votes"] = range_vote_series
+    df["regime_vol_ratio"] = regime_result.features["vol_ratio"]
+    df["regime_abs_slope"] = regime_result.features["abs_ema_slope"]
+
+    if regime_config.enable:
+        counts = regime_series.value_counts()
+        print("[regime] thresholds: " f"adx>={regime_config.adx_trend_threshold:.2f}/<={regime_config.adx_range_threshold:.2f}, " f"|ema_slope|>={regime_config.slope_trend_threshold:.5f}/<={regime_config.slope_range_threshold:.5f}, " f"vol_ratio>={regime_config.vol_ratio_trend:.2f}/<={regime_config.vol_ratio_range:.2f}; " f"cooldown={regime_config.switch_cooldown}")
+        print("[regime] distribution: " f"trend={int(counts.get('trend', 0))}, range={int(counts.get('range', 0))}")
+
+
     if params.enable_mean_reversion or params.enable_low_risk_reversion:
         rsi_series = rsi(df["close"], window=params.rsi_window)
     else:
@@ -318,26 +375,51 @@ def generate_signals(
             and df["volume"].iloc[i] >= volume_mean.iloc[i] * vol_mult_eff
         )
 
-        candidate_type: Optional[str] = None
-        if breakout:
-            candidate_type = "breakout"
-        else:
-            if (
-                params.enable_mean_reversion
-                and rsi_series.iloc[i] <= params.rsi_buy_threshold
-                and reversion_trend_ok
-                and rev_context_ok
-            ):
-                candidate_type = "reversion"
-            if (
-                params.enable_low_risk_reversion
-                and rsi_series.iloc[i] <= params.rsi_low_risk_threshold
-                and reversion_trend_ok
-                and rev_context_ok
-                and df["close"].iloc[i] <= kc_mid.iloc[i] - params.low_risk_kc_quantile * (kc_mid.iloc[i] - kc_lo.iloc[i])
-            ):
-                candidate_type = "reversion_low"
+        mean_reversion_ok = (
+            params.enable_mean_reversion
+            and rsi_series.iloc[i] <= params.rsi_buy_threshold
+            and reversion_trend_ok
+            and rev_context_ok
+        )
 
+        low_risk_reversion_ok = (
+            params.enable_low_risk_reversion
+            and rsi_series.iloc[i] <= params.rsi_low_risk_threshold
+            and reversion_trend_ok
+            and rev_context_ok
+            and df["close"].iloc[i] <= kc_mid.iloc[i] - params.low_risk_kc_quantile * (kc_mid.iloc[i] - kc_lo.iloc[i])
+        )
+
+        regime_label = "trend"
+        trend_votes = 0
+        range_votes = 0
+        if regime_config.enable:
+            regime_label = str(regime_series.iloc[i])
+            trend_votes = int(trend_vote_series.iloc[i])
+            range_votes = int(range_vote_series.iloc[i])
+
+        candidate_type: Optional[str] = None
+        if regime_config.enable and regime_label == "range":
+            if low_risk_reversion_ok:
+                candidate_type = "reversion_low"
+            elif mean_reversion_ok:
+                candidate_type = "reversion"
+            elif breakout and trend_votes >= max(regime_config.min_trend_votes + 1, regime_config.min_trend_votes):
+                candidate_type = "breakout"
+        elif regime_config.enable:
+            if breakout:
+                candidate_type = "breakout"
+            elif low_risk_reversion_ok and range_votes >= regime_config.min_range_votes + 1:
+                candidate_type = "reversion_low"
+            elif mean_reversion_ok and range_votes >= regime_config.min_range_votes + 1:
+                candidate_type = "reversion"
+        else:
+            if breakout:
+                candidate_type = "breakout"
+            elif low_risk_reversion_ok:
+                candidate_type = "reversion_low"
+            elif mean_reversion_ok:
+                candidate_type = "reversion"
         if candidate_type is None:
             continue
 
