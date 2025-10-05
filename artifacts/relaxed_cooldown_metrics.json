@@ -1,10 +1,10 @@
 {
-  "trade_count": 5.0,
-  "trades_per_day": 0.7142857142857143,
-  "exposure": 0.09375,
-  "net_return_pct": -0.006968390696525328,
-  "max_drawdown_pct": -0.024302686236676307,
-  "sharpe": -1.8585273432787384,
-  "win_rate": NaN,
-  "profit_factor": NaN
+  "trade_count": 106.0,
+  "trades_per_day": 0.8548387096774194,
+  "exposure": 0.24487847222222223,
+  "net_return_pct": 0.011428074686180123,
+  "max_drawdown_pct": -0.13755404232675594,
+  "sharpe": 0.2207133699166861,
+  "win_rate": 0.5,
+  "profit_factor": 1.0328675513032293
 }

@@ -10,11 +10,11 @@
             "request": "launch",
             "program": "${workspaceFolder}/run_backtest.py",
             "console": "integratedTerminal",
-            "python": "C:\\Users\\wonryeol\\anaconda3\\envs\\rltrading\\python.exe",
+            "python": "C:\\Users\\wrk92\\anaconda3\\envs\\coin_dest\\python.exe",
             "args": [
                 "--data-dir", "data/KRW-BTC",
                 "--sweep", "sweep.yaml",
-                "--sample-k", "7",
+                "--sample-k", "120",
                 // "--random-seed", "1230"
             ],
         }
