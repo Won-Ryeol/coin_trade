@@ -53,6 +53,13 @@ def run_backtest(
         max_stopouts_per_day=params.max_stopouts_per_day,
         daily_loss_cap_pct=params.daily_loss_cap_pct,
         time_stop_bars=params.time_stop_bars,
+        enable_partial_take_profit=params.enable_partial_take_profit,
+        partial_tp_fraction=params.partial_tp_fraction,
+        partial_tp_rr=params.partial_tp_rr,
+        breakeven_buffer_pct=params.breakeven_buffer_pct,
+        enable_trailing_stop=params.enable_trailing_stop,
+        trailing_stop_activation_rr=params.trailing_stop_activation_rr,
+        trailing_stop_atr_multiple=params.trailing_stop_atr_multiple,
     )
 
     equity_curve = compute_equity_curve(signals_df, trades)
@@ -73,3 +80,4 @@ def run_backtest(
         equity=equity_df,
         metrics=metrics,
     )
+

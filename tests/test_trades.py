@@ -119,3 +119,62 @@ def test_time_stop_exit_marks_time_outcome():
     trade = trades.iloc[0]
     assert trade["outcome"] == "time"
     assert trade["holding_bars"] == 3
+
+def test_partial_tp_promotes_stop_to_breakeven():
+    index = pd.date_range("2021-01-01", periods=8, freq="15T")
+    prices = np.full(len(index), 100.0)
+    df = _make_df(index, prices)
+    df["ATR"] = 0.5
+
+    df.loc[index[0], ["buy_signal", "tp_pct", "sl_pct"]] = [True, 0.04, 0.02]
+    partial_bar = index[2]
+    df.loc[partial_bar, "high"] = 102.2
+    stop_hit_bar = index[3]
+    df.loc[stop_hit_bar, "low"] = 99.9
+
+    trades = build_trades(
+        df,
+        enable_partial_take_profit=True,
+        partial_tp_fraction=0.5,
+        partial_tp_rr=1.0,
+        breakeven_buffer_pct=0.0005,
+    )
+
+    assert len(trades) == 1
+    trade = trades.iloc[0]
+    assert trade["partial_fraction"] == pytest.approx(0.5)
+    assert trade["outcome"] == "breakeven"
+    assert trade["final_stop_source"] == "breakeven"
+    assert trade["partial_exit_price"] == pytest.approx(102.0, rel=1e-6, abs=1e-6)
+    assert trade["gross_return_pct"] > 0
+    assert "partial" in trade["event_log"]
+    assert "breakeven" in trade["event_log"]
+
+
+def test_trailing_stop_tightens_and_exits():
+    index = pd.date_range("2021-01-02", periods=8, freq="15T")
+    prices = np.full(len(index), 100.0)
+    df = _make_df(index, prices)
+    df["ATR"] = 0.5
+
+    df.loc[index[0], ["buy_signal", "tp_pct", "sl_pct"]] = [True, 0.10, 0.02]
+    df.loc[index[1], "high"] = 102.5
+    df.loc[index[2], "high"] = 103.0
+    df.loc[index[3], "high"] = 104.0
+    df.loc[index[4], "low"] = 103.0
+
+    trades = build_trades(
+        df,
+        enable_trailing_stop=True,
+        trailing_stop_activation_rr=0.5,
+        trailing_stop_atr_multiple=1.0,
+    )
+
+    assert len(trades) == 1
+    trade = trades.iloc[0]
+    assert trade["outcome"] == "trail"
+    assert trade["final_stop_source"] == "trailing"
+    assert trade["trailing_active"] is True
+    assert trade["partial_fraction"] == pytest.approx(0.0)
+    assert trade["exit_price"] > trade["entry_price"]
+    assert "trail@" in trade["event_log"]

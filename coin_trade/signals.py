@@ -78,6 +78,13 @@ class StrategyParams:
     regime_min_trend_votes: int = 2
     regime_min_range_votes: int = 2
     regime_switch_cooldown: int = 12
+    enable_partial_take_profit: bool = False
+    partial_tp_fraction: float = 0.3
+    partial_tp_rr: float = 1.0
+    breakeven_buffer_pct: float = 0.0005
+    enable_trailing_stop: bool = False
+    trailing_stop_activation_rr: float = 1.0
+    trailing_stop_atr_multiple: float = 2.5
 
 
 @dataclass
@@ -460,3 +467,4 @@ def generate_signals(
     df["daily_return"] = daily_return
 
     return df
+
