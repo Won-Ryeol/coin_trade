@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Literal, cast
 
 import numpy as np
 import pandas as pd
@@ -42,15 +42,15 @@ class RegimeResult:
 
 
 def _normalize_default(label: str) -> RegimeLabel:
-    return label if label in ("trend", "range") else "trend"
+    return cast(RegimeLabel, label if label in ("trend", "range") else "trend")
 
 
 def detect_regime(
     df: pd.DataFrame,
     config: RegimeConfig,
     *,
-    adx_series: Optional[pd.Series] = None,
-    ema_long: Optional[pd.Series] = None,
+    adx_series: pd.Series | None = None,
+    ema_long: pd.Series | None = None,
 ) -> RegimeResult:
     """Classify each bar as trend or range regime using hysteresis."""
     index = df.index
@@ -70,10 +70,10 @@ def detect_regime(
     default_label = _normalize_default(config.default_regime)
 
     adx_src = adx_series if adx_series is not None else adx(df, window=config.adx_window)
-    adx_src = adx_src.reindex(index).fillna(method="ffill").fillna(method="bfill").fillna(0.0)
+    adx_src = adx_src.reindex(index).ffill().bfill().fillna(0.0)
 
     ema_base = ema_long if ema_long is not None else ema(df["close"], span=config.slope_ema_span)
-    ema_base = ema_base.reindex(index).fillna(method="ffill").fillna(method="bfill").fillna(0.0)
+    ema_base = ema_base.reindex(index).ffill().bfill().fillna(0.0)
     slope = ema_base.pct_change(config.slope_lookback).replace([np.inf, -np.inf], np.nan).fillna(0.0)
     abs_slope = slope.abs()
 

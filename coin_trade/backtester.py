@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 import pandas as pd
 
+from .config import DEFAULT_EXECUTION
 from .metrics import MetricResult, compute_equity_curve, compute_metrics
 from .signals import AutoThrottleConfig, Mode, StrategyParams, generate_signals
 from .trades import TradeExitPriority, build_trades
@@ -22,20 +22,20 @@ class BacktestResult:
 def run_backtest(
     price_df: pd.DataFrame,
     *,
-    params: Optional[StrategyParams] = None,
+    params: StrategyParams | None = None,
     mode: Mode = "production",
-    throttle_config: Optional[AutoThrottleConfig] = None,
-    fee_rate: float = 0.0005,
-    slippage_rate: float = 0.0,
+    throttle_config: AutoThrottleConfig | None = None,
+    fee_rate: float = DEFAULT_EXECUTION.fee_rate,
+    slippage_rate: float = DEFAULT_EXECUTION.slippage_rate,
     exit_priority: TradeExitPriority = "tp",
-    entry_df: Optional[pd.DataFrame] = None,
+    entry_df: pd.DataFrame | None = None,
     min_trades_for_stats: int = 200,
 ) -> BacktestResult:
     """Run the full backtest pipeline from signals to metrics."""
     if not isinstance(price_df.index, pd.DatetimeIndex):
         raise ValueError("price_df must have a DatetimeIndex")
 
-    params = params or StrategyParams(fee_rate=fee_rate)
+    params = params or StrategyParams()
     params.fee_rate = fee_rate
     params.slippage_buffer = max(params.slippage_buffer, slippage_rate)
 
@@ -63,7 +63,12 @@ def run_backtest(
     )
 
     equity_curve = compute_equity_curve(signals_df, trades)
-    metrics = compute_metrics(signals_df, trades, equity_curve, min_trades_for_stats=min_trades_for_stats)
+    metrics = compute_metrics(
+        signals_df,
+        trades,
+        equity_curve,
+        min_trades_for_stats=min_trades_for_stats,
+    )
 
     equity_df = pd.DataFrame(
         {

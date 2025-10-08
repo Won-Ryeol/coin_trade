@@ -1,0 +1,4 @@
+label,net_return_pct_mean,net_return_pct_std,net_return_pct_min,net_return_pct_max,win_rate_mean,win_rate_std,win_rate_min,win_rate_max,profit_factor_mean,profit_factor_std,profit_factor_min,profit_factor_max,max_drawdown_pct_mean,max_drawdown_pct_std,max_drawdown_pct_min,max_drawdown_pct_max,sharpe_mean,sharpe_std,sharpe_min,sharpe_max,trade_count_mean,trade_count_std,trade_count_min,trade_count_max,trades_per_day_mean,trades_per_day_std,trades_per_day_min,trades_per_day_max,runs,stability_score,average_drawdown,win_rate_cv
+aggressive_research,0.0,0.0,0.0,0.0,,,,,,,,,0.0,0.0,0.0,0.0,,,,,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,3,,0.0,
+baseline,0.0,0.0,0.0,0.0,,,,,,,,,0.0,0.0,0.0,0.0,,,,,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,3,,0.0,
+relaxed_cooldown,0.0,0.0,0.0,0.0,,,,,,,,,0.0,0.0,0.0,0.0,,,,,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,3,,0.0,

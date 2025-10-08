@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Literal, Optional
+from typing import Literal, cast
 
 import numpy as np
 import pandas as pd
 
+from .config import DEFAULT_EXECUTION, DEFAULT_SIGNAL_WINDOWS
 from .indicators import (
     adx,
     atr,
@@ -15,7 +16,8 @@ from .indicators import (
     pct_rank,
     rsi,
 )
-from .regime import RegimeConfig, detect_regime
+from .regime import RegimeConfig, RegimeLabel, detect_regime
+from .risk_reward import RiskRewardSettings, compute_risk_targets
 
 Mode = Literal["production", "research"]
 
@@ -31,8 +33,8 @@ class StrategyParams:
     ema_trend_len: int = 34
     ema_long_len: int = 96
     ema_slope_lookback: int = 8
-    adx_window: int = 14
-    atr_window: int = 14
+    adx_window: int = DEFAULT_SIGNAL_WINDOWS.adx_window
+    atr_window: int = DEFAULT_SIGNAL_WINDOWS.atr_window
     squeeze_window: int = 120
     squeeze_pct: float = 0.40
     adx_threshold: float = 22.0
@@ -48,12 +50,29 @@ class StrategyParams:
     rsi_low_risk_threshold: float = 35.0
     low_risk_kc_quantile: float = 0.35
     atr_ema_window: int = 48
-    fee_rate: float = 0.0005
-    slippage_buffer: float = 0.0
+    fee_rate: float = DEFAULT_EXECUTION.fee_rate
+    slippage_buffer: float = DEFAULT_EXECUTION.slippage_rate
     target_sl_low: float = 0.008
     target_sl_high: float = 0.013
     rr_low: float = 1.8
     rr_high: float = 2.4
+    rr_min: float = 1.05
+    rr_max: float = 2.8
+    rr_breakout_slope_knots: tuple[float, ...] = (-0.004, -0.0015, 0.0, 0.0015, 0.0035)
+    rr_breakout_slope_values: tuple[float, ...] = (1.4, 1.6, 1.8, 2.2, 2.6)
+    rr_breakout_adx_knots: tuple[float, ...] = (18.0, 22.0, 28.0, 38.0)
+    rr_breakout_adx_values: tuple[float, ...] = (1.6, 1.75, 2.1, 2.5)
+    rr_breakout_blend: float = 0.55
+    rr_reversion_slope_knots: tuple[float, ...] = (-0.004, -0.0015, 0.0, 0.0015, 0.003)
+    rr_reversion_slope_values: tuple[float, ...] = (0.9, 1.05, 1.2, 1.45, 1.6)
+    rr_reversion_floor: float = 0.9
+    rr_reversion_ceiling: float = 1.7
+    sl_scale_clip: tuple[float, float] = (0.5, 4.0)
+    sl_atr_floor: float = 1e-06
+    rr_buffer_factor: float = 2.0
+    sl_breakout_multiplier: float = 1.05
+    sl_reversion_multiplier: float = 0.9
+    low_risk_tp_scale: float = 0.9
     max_sl_pct: float = 0.03
     max_tp_pct: float = 0.06
     daily_return_lookback: int = 96
@@ -81,7 +100,7 @@ class StrategyParams:
     enable_partial_take_profit: bool = False
     partial_tp_fraction: float = 0.3
     partial_tp_rr: float = 1.0
-    breakeven_buffer_pct: float = 0.0005
+    breakeven_buffer_pct: float = DEFAULT_EXECUTION.breakeven_buffer_pct
     enable_trailing_stop: bool = False
     trailing_stop_activation_rr: float = 1.0
     trailing_stop_atr_multiple: float = 2.5
@@ -105,7 +124,7 @@ class AutoThrottleConfig:
     bias_ceiling: int = 1
 
 
-DEFAULT_THROTTLE: Dict[Mode, AutoThrottleConfig] = {
+DEFAULT_THROTTLE: dict[Mode, AutoThrottleConfig] = {
     "production": AutoThrottleConfig(
         target_trades_per_day_low=6.0,
         target_trades_per_day_high=10.0,
@@ -209,10 +228,10 @@ def _warmup_bars(params: StrategyParams) -> int:
 
 def generate_signals(
     df: pd.DataFrame,
-    params: Optional[StrategyParams] = None,
+    params: StrategyParams | None = None,
     *,
     mode: Mode = "production",
-    throttle_config: Optional[AutoThrottleConfig] = None,
+    throttle_config: AutoThrottleConfig | None = None,
 ) -> pd.DataFrame:
     """Compute strategy signals while keeping legacy signal columns."""
     if params is None:
@@ -234,7 +253,7 @@ def generate_signals(
 
     volume_mean = df["volume"].rolling(window=params.vol_lookback, min_periods=params.vol_lookback).mean()
     atr_pct = atr_series / df["close"].replace(0, np.nan)
-    atr_pct = atr_pct.fillna(method="ffill")
+    atr_pct = atr_pct.ffill()
     atr_pct_ema = ema(atr_pct.fillna(atr_pct.expanding().mean()), span=params.atr_ema_window)
 
     ema_long = ema(df["close"], span=params.ema_long_len)
@@ -245,7 +264,10 @@ def generate_signals(
 
     regime_config = RegimeConfig(
         enable=params.enable_regime_filter,
-        default_regime=params.regime_default if params.regime_default in ("trend", "range") else "trend",
+        default_regime=cast(
+            RegimeLabel,
+            params.regime_default if params.regime_default in ("trend", "range") else "trend",
+        ),
         adx_window=params.regime_adx_window,
         adx_trend_threshold=params.regime_adx_trend,
         adx_range_threshold=params.regime_adx_range,
@@ -279,68 +301,73 @@ def generate_signals(
 
     if regime_config.enable:
         counts = regime_series.value_counts()
-        print("[regime] thresholds: " f"adx>={regime_config.adx_trend_threshold:.2f}/<={regime_config.adx_range_threshold:.2f}, " f"|ema_slope|>={regime_config.slope_trend_threshold:.5f}/<={regime_config.slope_range_threshold:.5f}, " f"vol_ratio>={regime_config.vol_ratio_trend:.2f}/<={regime_config.vol_ratio_range:.2f}; " f"cooldown={regime_config.switch_cooldown}")
+        print(
+            "[regime] thresholds: "
+            f"adx>={regime_config.adx_trend_threshold:.2f}/<={regime_config.adx_range_threshold:.2f}, "
+            f"|ema_slope|>={regime_config.slope_trend_threshold:.5f}/<={regime_config.slope_range_threshold:.5f}, "
+            f"vol_ratio>={regime_config.vol_ratio_trend:.2f}/<={regime_config.vol_ratio_range:.2f}; "
+            f"cooldown={regime_config.switch_cooldown}"
+        )
         print("[regime] distribution: " f"trend={int(counts.get('trend', 0))}, range={int(counts.get('range', 0))}")
-
 
     if params.enable_mean_reversion or params.enable_low_risk_reversion:
         rsi_series = rsi(df["close"], window=params.rsi_window)
     else:
         rsi_series = pd.Series(np.nan, index=df.index)
 
-    rr_base = np.where(adx_series >= params.adx_rr_threshold, params.rr_high, params.rr_low)
     slope_norm = ema_long_slope_pct.fillna(0.0)
-    rr_dynamic = np.where(
-        slope_norm >= 0.003,
-        params.rr_high + 0.4,
-        np.where(
-            slope_norm >= 0.0015,
-            params.rr_high,
-            np.where(
-                slope_norm <= -0.001,
-                np.maximum(params.rr_low - 0.4, 1.05),
-                rr_base
-            )
-        )
+
+    risk_settings = RiskRewardSettings(
+        target_sl_low=params.target_sl_low,
+        target_sl_high=params.target_sl_high,
+        max_sl_pct=params.max_sl_pct,
+        max_tp_pct=params.max_tp_pct,
+        rr_low=params.rr_low,
+        rr_high=params.rr_high,
+        rr_min=params.rr_min,
+        rr_max=params.rr_max,
+        adx_rr_threshold=params.adx_rr_threshold,
+        breakout_slope_knots=params.rr_breakout_slope_knots,
+        breakout_slope_values=params.rr_breakout_slope_values,
+        breakout_adx_knots=params.rr_breakout_adx_knots,
+        breakout_adx_values=params.rr_breakout_adx_values,
+        breakout_blend=params.rr_breakout_blend,
+        reversion_slope_knots=params.rr_reversion_slope_knots,
+        reversion_slope_values=params.rr_reversion_slope_values,
+        reversion_floor=params.rr_reversion_floor,
+        reversion_ceiling=params.rr_reversion_ceiling,
+        sl_scale_clip=params.sl_scale_clip,
+        atr_floor=params.sl_atr_floor,
+        buffer_factor=params.rr_buffer_factor,
+        breakout_stop_multiplier=params.sl_breakout_multiplier,
+        reversion_stop_multiplier=params.sl_reversion_multiplier,
+        fee_rate=params.fee_rate,
+        slippage_buffer=params.slippage_buffer,
     )
-    rr_dynamic = np.clip(rr_dynamic, 1.05, params.rr_high + 0.6)
 
-    rev_rr = np.where(
-        slope_norm <= -0.0015,
-        0.9,
-        np.where(
-            slope_norm >= 0.0025,
-            1.6,
-            np.where(
-                slope_norm >= 0.0015,
-                1.4,
-                1.1
-            )
-        )
+    risk_targets = compute_risk_targets(
+        atr_pct_ema=atr_pct_ema,
+        slope=slope_norm,
+        adx=adx_series,
+        settings=risk_settings,
     )
 
-    target_mid = (params.target_sl_low + params.target_sl_high) / 2
-    base_sl = atr_pct_ema.replace(0, np.nan)
-    safe_base = base_sl.where(base_sl > 1e-6, target_mid)
-    scale = (target_mid / safe_base).clip(lower=0.5, upper=4.0)
-    adaptive_sl = (safe_base * scale).clip(lower=params.target_sl_low, upper=params.target_sl_high).fillna(params.target_sl_high)
-
-    buffer = 2 * (params.fee_rate + params.slippage_buffer)
-    sl_break = (adaptive_sl * 1.05 + buffer).clip(upper=params.max_sl_pct)
-    sl_rev = (adaptive_sl * 0.90 + buffer).clip(upper=params.max_sl_pct)
-
-    tp_break = (sl_break * rr_dynamic + buffer).clip(upper=params.max_tp_pct)
-    tp_rev = (sl_rev * rev_rr + buffer).clip(upper=params.max_tp_pct)
+    sl_break = risk_targets.sl_breakout
+    sl_rev = risk_targets.sl_reversion
+    tp_break = risk_targets.tp_breakout
+    tp_rev = risk_targets.tp_reversion
+    rr_breakout = risk_targets.rr_breakout
+    rr_reversion = risk_targets.rr_reversion
 
     n = len(df)
     buy_signal = np.zeros(n, dtype=bool)
-    signal_type: list[Optional[str]] = [None] * n
+    signal_type: list[str | None] = [None] * n
     tp_pct = np.full(n, np.nan, dtype=float)
     sl_pct = np.full(n, np.nan, dtype=float)
 
     throttle = AutoThrottle(params.cooldown_bars, params.max_trades_per_day, throttle_config)
     last_signal_idx = -10_000
-    daily_counts: Dict[pd.Timestamp, int] = {}
+    daily_counts: dict[pd.Timestamp, int] = {}
 
     warmup = _warmup_bars(params)
     for i in range(warmup, n):
@@ -363,13 +390,13 @@ def generate_signals(
             and slope_val > -0.002
         )
         reversion_trend_ok = (
-            df["close"].iloc[i] >= ema_trend.iloc[i] * 0.985
-            and np.isfinite(slope_val)
-            and -0.03 <= slope_val < 0.012
+            df["close"].iloc[i] >= ema_trend.iloc[i] * 0.985 and np.isfinite(slope_val) and -0.03 <= slope_val < 0.012
         )
 
         context_ok = daily_return.iloc[i] >= max(daily_floor_eff, -0.05)
-        rev_context_ok = (daily_return.iloc[i] <= (rev_floor_eff + 0.01)) or (params.enable_mean_reversion and rsi_series.iloc[i] <= params.rsi_buy_threshold - 5)
+        rev_context_ok = (daily_return.iloc[i] <= (rev_floor_eff + 0.01)) or (
+            params.enable_mean_reversion and rsi_series.iloc[i] <= params.rsi_buy_threshold - 5
+        )
 
         breakout = bool(
             in_kc.iloc[i]
@@ -405,7 +432,7 @@ def generate_signals(
             trend_votes = int(trend_vote_series.iloc[i])
             range_votes = int(range_vote_series.iloc[i])
 
-        candidate_type: Optional[str] = None
+        candidate_type: str | None = None
         if regime_config.enable and regime_label == "range":
             if low_risk_reversion_ok:
                 candidate_type = "reversion_low"
@@ -451,14 +478,19 @@ def generate_signals(
             tp_pct[i] = tp_rev.iloc[i]
             sl_pct[i] = sl_rev.iloc[i]
         else:
-            tp_val = float(tp_rev.iloc[i] * 0.9)
+            tp_val = float(tp_rev.iloc[i] * params.low_risk_tp_scale)
             tp_pct[i] = max(params.target_sl_low, min(tp_val, params.max_tp_pct))
             sl_pct[i] = sl_rev.iloc[i]
 
     df["buy_signal"] = buy_signal
-    df["signal_type"] = pd.Series(signal_type, index=df.index).replace({None: np.nan})
+    df["signal_type"] = pd.Series(
+        [value if value is not None else np.nan for value in signal_type],
+        index=df.index,
+    )
     df["tp_pct"] = np.where(buy_signal, tp_pct, np.nan)
     df["sl_pct"] = np.where(buy_signal, sl_pct, np.nan)
+    df["rr_breakout"] = rr_breakout
+    df["rr_reversion"] = rr_reversion
 
     df["EMA_trend"] = ema_trend
     df["EMA_long"] = ema_long
@@ -467,4 +499,3 @@ def generate_signals(
     df["daily_return"] = daily_return
 
     return df
-

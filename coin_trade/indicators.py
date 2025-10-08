@@ -35,14 +35,26 @@ def adx(df: pd.DataFrame, window: int = 14) -> pd.Series:
     tr = true_range(df)
     atr_window = tr.rolling(window=window, min_periods=window).mean()
 
-    plus_di = 100 * pd.Series(plus_dm, index=df.index).rolling(window=window, min_periods=window).mean() / (atr_window + 1e-12)
-    minus_di = 100 * pd.Series(minus_dm, index=df.index).rolling(window=window, min_periods=window).mean() / (atr_window + 1e-12)
+    plus_di = (
+        100
+        * pd.Series(plus_dm, index=df.index).rolling(window=window, min_periods=window).mean()
+        / (atr_window + 1e-12)
+    )
+    minus_di = (
+        100
+        * pd.Series(minus_dm, index=df.index).rolling(window=window, min_periods=window).mean()
+        / (atr_window + 1e-12)
+    )
 
     dx = (plus_di.subtract(minus_di).abs() / (plus_di.add(minus_di) + 1e-12)) * 100
     return dx.rolling(window=window, min_periods=window).mean()
 
 
-def bollinger_bands(series: pd.Series, window: int = 20, num_std: float = 2.0) -> tuple[pd.Series, pd.Series, pd.Series]:
+def bollinger_bands(
+    series: pd.Series,
+    window: int = 20,
+    num_std: float = 2.0,
+) -> tuple[pd.Series, pd.Series, pd.Series]:
     """Return Bollinger Band mid, upper, and lower lines."""
     mid = series.rolling(window=window, min_periods=window).mean()
     std = series.rolling(window=window, min_periods=window).std(ddof=0)
@@ -51,7 +63,11 @@ def bollinger_bands(series: pd.Series, window: int = 20, num_std: float = 2.0) -
     return mid, upper, lower
 
 
-def keltner_channel(df: pd.DataFrame, window: int = 20, multiplier: float = 1.5) -> tuple[pd.Series, pd.Series, pd.Series]:
+def keltner_channel(
+    df: pd.DataFrame,
+    window: int = 20,
+    multiplier: float = 1.5,
+) -> tuple[pd.Series, pd.Series, pd.Series]:
     """Return Keltner Channel mid, upper, and lower lines."""
     mid = ema(df["close"], span=window)
     rng = atr(df, window)

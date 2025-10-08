@@ -1,11 +1,11 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
 import pytest
 
 from coin_trade.data import load_random_data
 
 
-def _write_csv(path, start, periods=16, freq='15T'):
+def _write_csv(path, start, periods=16, freq='15min'):
     index = pd.date_range(start=start, periods=periods, freq=freq)
     base = np.linspace(100, 101, periods)
     df = pd.DataFrame(
@@ -60,7 +60,7 @@ def test_load_random_data_invalid_sample(tmp_path):
 def test_load_random_data_invalid_frequency(tmp_path):
     data_dir = tmp_path / 'data'
     data_dir.mkdir()
-    index = pd.date_range('2024-01-01 00:00:00', periods=10, freq='30T')
+    index = pd.date_range('2024-01-01 00:00:00', periods=10, freq='30min')
     df = pd.DataFrame(
         {
             'timestamp': index,
@@ -88,3 +88,5 @@ def test_load_random_data_skips_large_gap(tmp_path):
     assert [f.name for f in files] == ['asset_0.csv', 'asset_1.csv']
     max_gap = df.index.to_series().diff().dropna().max()
     assert max_gap <= pd.Timedelta(days=1)
+
+

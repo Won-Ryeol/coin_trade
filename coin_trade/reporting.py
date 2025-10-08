@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from coin_trade.backtester import BacktestResult
 
 
-def summarize_metrics(result: BacktestResult) -> Dict[str, Any]:
+def summarize_metrics(result: BacktestResult) -> dict[str, Any]:
     metrics = result.metrics.metrics
     return {
         "trade_count": metrics.get("trade_count"),
@@ -23,9 +23,5 @@ def format_metric(value: Any) -> str:
     if value is None:
         return "N/A"
     if isinstance(value, float):
-        if value != value:  # NaN check
-            return "N/A"
-        if abs(value) >= 1000:
-            return f"{value:.2e}"
-        return f"{value:.4f}"
+        return f"{value:.2f}"
     return str(value)

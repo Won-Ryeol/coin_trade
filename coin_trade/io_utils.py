@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 
 from coin_trade.backtester import BacktestResult
-
-REQUIRED_COLUMNS = {"open", "high", "low", "close", "volume"}
+from coin_trade.config import PRICE_COLUMNS
+from coin_trade.utils.dataframe import (
+    clean_price_frame,
+    detect_datetime_column,
+    ensure_required_columns,
+    normalise_columns,
+    set_datetime_index,
+)
 
 
 def load_price_data(path: str) -> pd.DataFrame:
@@ -17,35 +22,26 @@ def load_price_data(path: str) -> pd.DataFrame:
         raise FileNotFoundError(path)
 
     if data_path.suffix.lower() == ".csv":
-        df = pd.read_csv(data_path)
+        frame = pd.read_csv(data_path)
     elif data_path.suffix.lower() in {".parquet", ".pq"}:
-        df = pd.read_parquet(data_path)
+        frame = pd.read_parquet(data_path)
     else:
         raise ValueError("Data file must be CSV or Parquet")
 
-    df.columns = [c.lower() for c in df.columns]
+    normalise_columns(frame)
 
-    if isinstance(df.index, pd.DatetimeIndex):
-        pass
-    elif "timestamp" in df.columns:
-        df["timestamp"] = pd.to_datetime(df["timestamp"], utc=False)
-        df = df.set_index("timestamp")
-    elif "datetime" in df.columns:
-        df["datetime"] = pd.to_datetime(df["datetime"], utc=False)
-        df = df.set_index("datetime")
+    if isinstance(frame.index, pd.DatetimeIndex):
+        processed = frame
     else:
-        first_col = df.columns[0]
-        df[first_col] = pd.to_datetime(df[first_col], utc=False)
-        df = df.set_index(first_col)
+        dt_col = detect_datetime_column(frame)
+        processed = set_datetime_index(frame, dt_col)
 
-    missing = REQUIRED_COLUMNS - set(df.columns)
-    if missing:
-        raise ValueError(f"Data file missing required columns: {missing}")
-
-    return df.sort_index()
+    ensure_required_columns(processed, PRICE_COLUMNS)
+    processed = clean_price_frame(processed, PRICE_COLUMNS)
+    return processed
 
 
-def maybe_filter(df: pd.DataFrame, start: Optional[str], end: Optional[str]) -> pd.DataFrame:
+def maybe_filter(df: pd.DataFrame, start: str | None, end: str | None) -> pd.DataFrame:
     if start:
         df = df[df.index >= pd.to_datetime(start)]
     if end:

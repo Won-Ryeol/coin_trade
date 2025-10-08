@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -27,9 +25,9 @@ def render_trades_plot(
     trades: pd.DataFrame,
     *,
     title: str = "Backtest",
-    output_path: Optional[str] = None,
+    output_path: str | None = None,
     margin_bars: int = 25,
-    trade_index: Optional[int] = None,
+    trade_index: int | None = None,
 ) -> go.Figure:
     """Render a Plotly figure highlighting entries, TP, and SL zones."""
     if trades.empty:

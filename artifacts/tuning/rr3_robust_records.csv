@@ -1,0 +1,10 @@
+trade_count,trades_per_day,exposure,net_return_pct,max_drawdown_pct,sharpe,win_rate,profit_factor,label,seed,sampled_files,trade_count_actual
+0.0,0.0,0.0,0.0,0.0,,,,baseline,42,data\KRW-DOGE\20230712.csv|data\KRW-DOGE\20230713.csv|data\KRW-DOGE\20230714.csv,0.0
+1.0,0.3333333333333333,0.09027777777777778,0.000126768633721408,0.0,9.181104668112072,,,baseline,4242,data\KRW-CRO\20221125.csv|data\KRW-CRO\20221126.csv|data\KRW-CRO\20221127.csv,1.0
+0.0,0.0,0.0,0.0,0.0,,,,baseline,2025,data\KRW-BCH\20220530.csv|data\KRW-BCH\20220531.csv|data\KRW-BCH\20220601.csv,0.0
+0.0,0.0,0.0,0.0,0.0,,,,relaxed_cooldown,42,data\KRW-DOGE\20230712.csv|data\KRW-DOGE\20230713.csv|data\KRW-DOGE\20230714.csv,0.0
+1.0,0.3333333333333333,0.09027777777777778,0.000126768633721408,0.0,9.181104668112072,,,relaxed_cooldown,4242,data\KRW-CRO\20221125.csv|data\KRW-CRO\20221126.csv|data\KRW-CRO\20221127.csv,1.0
+0.0,0.0,0.0,0.0,0.0,,,,relaxed_cooldown,2025,data\KRW-BCH\20220530.csv|data\KRW-BCH\20220531.csv|data\KRW-BCH\20220601.csv,0.0
+0.0,0.0,0.0,0.0,0.0,,,,aggressive_research,42,data\KRW-DOGE\20230712.csv|data\KRW-DOGE\20230713.csv|data\KRW-DOGE\20230714.csv,0.0
+1.0,0.3333333333333333,0.09027777777777778,0.000126768633721408,0.0,9.181104668112072,,,aggressive_research,4242,data\KRW-CRO\20221125.csv|data\KRW-CRO\20221126.csv|data\KRW-CRO\20221127.csv,1.0
+0.0,0.0,0.0,0.0,0.0,,,,aggressive_research,2025,data\KRW-BCH\20220530.csv|data\KRW-BCH\20220531.csv|data\KRW-BCH\20220601.csv,0.0

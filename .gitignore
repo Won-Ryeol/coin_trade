@@ -2,4 +2,4 @@ data/**
 .vscode/**
 *.pyc
 __pycache__/
-artifacts/**
+artifacts/**.coverage

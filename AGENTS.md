@@ -1,20 +1,28 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-The `coin_trade/` package contains the backtester pipeline: `signals.py` orchestrates squeeze logic, `trades.py` builds fills, and `metrics.py` plus `plotting.py` format outputs. CLI helpers live in `run_backtest.py` and `cli_utils.py`. Tests under `tests/` mirror modules (`test_trades.py`, `test_signals.py`). Place raw 15m CSV data beneath `data/`; generated artifacts land in `artifacts/`.
+- coin_trade/config.py defines shared execution and window defaults consumed across signals and trades.
+- coin_trade/utils/ hosts reusable dataframe hygiene (dataframe.py) and execution math (execution.py).
+- Core engines live in coin_trade/signals.py, coin_trade/trades.py, coin_trade/backtester.py, with IO helpers in io_utils.py and reporting in eporting.py.
+- Tests mirror the new utilities and behaviours under 	ests/ (e.g., 	est_utils_execution.py, 	est_regime.py).
 
 ## Build, Test, and Development Commands
-- `python -m venv .venv && .venv\Scripts\activate` prepares a local environment.
-- `pip install pandas numpy plotly pytest pyyaml` installs runtime and test deps.
-- `python run_backtest.py --mode research --sample-k 1` executes a single-run backtest and writes `artifacts/`.
-- `python run_backtest.py --sweep sweep.yaml --sample-k 2` sweeps override sets defined in `sweep.yaml`.
-- `pytest` runs all unit tests; use `pytest tests/test_trades.py -k exit_priority` when iterating on a scenario.
+- Always use C:\Users\wrk92\anaconda3\envs\coin_dest\python.exe for all Python and tooling commands.
+- C:\Users\wrk92\anaconda3\envs\coin_dest\python.exe -m ruff check enforces lint rules.
+- C:\Users\wrk92\anaconda3\envs\coin_dest\python.exe -m mypy . runs static type checks.
+- C:\Users\wrk92\anaconda3\envs\coin_dest\python.exe -m pytest executes the suite with coverage.
 
 ## Coding Style & Naming Conventions
-Use Python 3.8+ with 4-space indentation and type hints (`BacktestResult`, `StrategyParams`). Keep public functions documented with one-line docstrings and prefer explicit keyword-only arguments for clarity. Follow the existing snake_case for functions, snake_case CSV file names, and uppercase constants. Favor small, composable helpers rather than expanding monoliths like `run_backtest`.
+- Prefer typed function signatures and reusable helpers in coin_trade/utils over inline duplication.
+- Keep frequency literals in ISO form (15min) to avoid deprecation warnings.
+- Strategy-level constants derive from config.DEFAULT_EXECUTION and DEFAULT_SIGNAL_WINDOWS; avoid hard-coding fees or ATR windows.
 
 ## Testing Guidelines
-Pytest drives coverage; every new helper should have a deterministic fixture in `tests/conftest.py`. Name test files `test_<module>.py` and keep focused parametrized cases to surface regressions (ADX thresholds, TP/SL tie-breaking, cooldown caps). Ensure new strategies hit the minimum trades guard; capture regression datasets in `data/samples/` when needed. Backtests run quickly, so add at least one assertion on metrics for each new config.
+- Extend synthetic fixtures in 	ests/ when introducing new risk logic or utilities.
+- Tests treat warnings as errors; update fixtures or code to avoid deprecated pandas idioms.
+- Coverage runs with pytest --cov=coin_trade; add focused unit tests when refactoring core modules.
 
 ## Commit & Pull Request Guidelines
-Commit history favors short, imperative subjects (`refactor`, `init`). Continue that style and optionally append a scope (`signals`) when touching a single module. For pull requests, describe the strategy change, list commands run (`pytest`, sample backtest), and attach the resulting `artifacts/metrics.json` diff or Plotly screenshot. Link open issues or TODOs and call out any configuration flags that now default differently.
+- Reference lint/type/test commands above in PR descriptions.
+- Note structural moves (e.g., new utility modules) and document any migrations in CHANGELOG.md.
+- Keep behavioural changes backward compatible; document parameter or output adjustments explicitly.

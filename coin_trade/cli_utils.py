@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional
-
-import numpy as np
+from typing import Any
 
 try:
     import yaml  # type: ignore
@@ -12,9 +11,9 @@ except Exception:  # pragma: no cover - optional dependency
     yaml = None
 
 
-def parse_key_value(pairs: Optional[Iterable[str]]) -> Dict[str, Any]:
+def parse_key_value(pairs: Iterable[str] | None) -> dict[str, Any]:
     """Parse CLI overrides in ``key=value`` form into a dictionary."""
-    result: Dict[str, Any] = {}
+    result: dict[str, Any] = {}
     if not pairs:
         return result
 
@@ -47,7 +46,7 @@ def _coerce_scalar(value: str) -> Any:
             return value
 
 
-def load_structured(path: Optional[str]) -> Optional[Any]:
+def load_structured(path: str | None) -> Any | None:
     """Load JSON/YAML configuration files."""
     if path is None:
         return None

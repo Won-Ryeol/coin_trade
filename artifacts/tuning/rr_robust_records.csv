@@ -1,0 +1,10 @@
+trade_count,trades_per_day,exposure,net_return_pct,max_drawdown_pct,sharpe,win_rate,profit_factor,label,seed,sampled_files,trade_count_actual
+0.0,0.0,0.0,0.0,0.0,,,,baseline,42,data\KRW-DOGE\20230712.csv,0.0
+0.0,0.0,0.0,0.0,0.0,,,,baseline,4242,data\KRW-SHIB\20230228.csv,0.0
+0.0,0.0,0.0,0.0,0.0,,,,baseline,2025,data\KRW-BCH\20220530.csv,0.0
+0.0,0.0,0.0,0.0,0.0,,,,relaxed_cooldown,42,data\KRW-DOGE\20230712.csv,0.0
+0.0,0.0,0.0,0.0,0.0,,,,relaxed_cooldown,4242,data\KRW-SHIB\20230228.csv,0.0
+0.0,0.0,0.0,0.0,0.0,,,,relaxed_cooldown,2025,data\KRW-BCH\20220530.csv,0.0
+0.0,0.0,0.0,0.0,0.0,,,,aggressive_research,42,data\KRW-DOGE\20230712.csv,0.0
+0.0,0.0,0.0,0.0,0.0,,,,aggressive_research,4242,data\KRW-SHIB\20230228.csv,0.0
+0.0,0.0,0.0,0.0,0.0,,,,aggressive_research,2025,data\KRW-BCH\20220530.csv,0.0

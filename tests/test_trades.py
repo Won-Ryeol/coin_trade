@@ -1,6 +1,6 @@
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
 
 from coin_trade.trades import build_trades
 
@@ -23,7 +23,7 @@ def _make_df(index, prices):
 
 
 def test_next_bar_open_entry():
-    index = pd.date_range("2021-01-01", periods=6, freq="15T")
+    index = pd.date_range("2021-01-01", periods=6, freq="15min")
     prices = np.array([100, 101, 102, 103, 104, 105], dtype=float)
     df = _make_df(index, prices)
 
@@ -41,7 +41,7 @@ def test_next_bar_open_entry():
 
 
 def test_same_bar_priority_resolution():
-    index = pd.date_range("2021-01-01", periods=5, freq="15T")
+    index = pd.date_range("2021-01-01", periods=5, freq="15min")
     prices = np.array([100, 100, 100, 100, 100], dtype=float)
     df = _make_df(index, prices)
 
@@ -60,7 +60,7 @@ def test_same_bar_priority_resolution():
 
 
 def test_ignore_signals_during_open_trade():
-    index = pd.date_range("2021-01-01", periods=8, freq="15T")
+    index = pd.date_range("2021-01-01", periods=8, freq="15min")
     prices = np.linspace(100, 110, len(index))
     df = _make_df(index, prices)
 
@@ -78,7 +78,7 @@ def test_ignore_signals_during_open_trade():
 
 
 def test_fee_and_slippage_are_applied():
-    index = pd.date_range("2021-01-01", periods=4, freq="15T")
+    index = pd.date_range("2021-01-01", periods=4, freq="15min")
     prices = np.array([100, 100, 110, 110], dtype=float)
     df = _make_df(index, prices)
 
@@ -94,7 +94,7 @@ def test_fee_and_slippage_are_applied():
     assert trade["cost_pct"] == pytest.approx(trade["gross_return_pct"] - expected_net, rel=1e-6)
 
 def test_max_stopouts_per_day_limits_additional_signals():
-    index = pd.date_range("2021-01-01", periods=12, freq="15T")
+    index = pd.date_range("2021-01-01", periods=12, freq="15min")
     prices = np.linspace(100, 111, len(index))
     df = _make_df(index, prices)
 
@@ -108,7 +108,7 @@ def test_max_stopouts_per_day_limits_additional_signals():
 
 
 def test_time_stop_exit_marks_time_outcome():
-    index = pd.date_range("2021-01-01", periods=10, freq="15T")
+    index = pd.date_range("2021-01-01", periods=10, freq="15min")
     prices = np.linspace(100, 101, len(index))
     df = _make_df(index, prices)
 
@@ -121,7 +121,7 @@ def test_time_stop_exit_marks_time_outcome():
     assert trade["holding_bars"] == 3
 
 def test_partial_tp_promotes_stop_to_breakeven():
-    index = pd.date_range("2021-01-01", periods=8, freq="15T")
+    index = pd.date_range("2021-01-01", periods=8, freq="15min")
     prices = np.full(len(index), 100.0)
     df = _make_df(index, prices)
     df["ATR"] = 0.5
@@ -152,7 +152,7 @@ def test_partial_tp_promotes_stop_to_breakeven():
 
 
 def test_trailing_stop_tightens_and_exits():
-    index = pd.date_range("2021-01-02", periods=8, freq="15T")
+    index = pd.date_range("2021-01-02", periods=8, freq="15min")
     prices = np.full(len(index), 100.0)
     df = _make_df(index, prices)
     df["ATR"] = 0.5
@@ -174,7 +174,9 @@ def test_trailing_stop_tightens_and_exits():
     trade = trades.iloc[0]
     assert trade["outcome"] == "trail"
     assert trade["final_stop_source"] == "trailing"
-    assert trade["trailing_active"] is True
+    assert bool(trade["trailing_active"])
     assert trade["partial_fraction"] == pytest.approx(0.0)
     assert trade["exit_price"] > trade["entry_price"]
     assert "trail@" in trade["event_log"]
+
+

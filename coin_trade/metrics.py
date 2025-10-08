@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -17,7 +16,7 @@ class EquityCurve:
 
 @dataclass
 class MetricResult:
-    metrics: Dict[str, float]
+    metrics: dict[str, float]
     min_trades_threshold: int
 
 
@@ -45,7 +44,12 @@ def compute_equity_curve(
     high_water = equity_series.cummax()
     drawdown = equity_series / high_water - 1.0
 
-    return EquityCurve(index=df.index, equity=equity_series, drawdown=drawdown, high_water=high_water)
+    return EquityCurve(
+        index=df.index,
+        equity=equity_series,
+        drawdown=drawdown,
+        high_water=high_water,
+    )
 
 
 def _annualization_factor(df: pd.DataFrame) -> float:
@@ -65,7 +69,7 @@ def compute_metrics(
     *,
     min_trades_for_stats: int = 200,
 ) -> MetricResult:
-    metrics: Dict[str, float] = {}
+    metrics: dict[str, float] = {}
 
     trade_count = int(len(trades))
     metrics["trade_count"] = float(trade_count)

@@ -1,0 +1,17 @@
+{
+  "42": [
+    "data\\KRW-DOGE\\20230712.csv",
+    "data\\KRW-DOGE\\20230713.csv",
+    "data\\KRW-DOGE\\20230714.csv"
+  ],
+  "4242": [
+    "data\\KRW-CRO\\20221125.csv",
+    "data\\KRW-CRO\\20221126.csv",
+    "data\\KRW-CRO\\20221127.csv"
+  ],
+  "2025": [
+    "data\\KRW-BCH\\20220530.csv",
+    "data\\KRW-BCH\\20220531.csv",
+    "data\\KRW-BCH\\20220601.csv"
+  ]
+}

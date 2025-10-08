@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from coin_trade.signals import AutoThrottleConfig, StrategyParams, generate_signals, _warmup_bars
+from coin_trade.signals import AutoThrottleConfig, StrategyParams, _warmup_bars, generate_signals
 
 
 def _frozen_throttle() -> AutoThrottleConfig:
@@ -54,7 +54,7 @@ def _base_params(**kwargs) -> StrategyParams:
 
 
 def _make_price_df(start: str, periods: int) -> pd.DataFrame:
-    index = pd.date_range(start, periods=periods, freq="15T")
+    index = pd.date_range(start, periods=periods, freq="15min")
     prices = np.linspace(100, 105, periods)
     df = pd.DataFrame(
         {
@@ -106,4 +106,5 @@ def test_no_signals_before_warmup():
     signal_idx = np.flatnonzero(signals["buy_signal"].to_numpy())
     if len(signal_idx):
         assert signal_idx[0] >= warmup
+
 

@@ -1,27 +1,16 @@
 from __future__ import annotations
 
+import math
 from collections import defaultdict
-from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Literal
 
 import numpy as np
 import pandas as pd
 
+from coin_trade.config import DEFAULT_EXECUTION
+from coin_trade.utils.execution import price_at_rr, weighted_returns
+
 TradeExitPriority = Literal["tp", "sl"]
-
-
-@dataclass
-class TradeBuilderConfig:
-    priority: TradeExitPriority = "tp"
-    fee_rate: float = 0.0005
-    slippage_rate: float = 0.0
-    enable_partial_take_profit: bool = False
-    partial_tp_fraction: float = 0.0
-    partial_tp_rr: float = 1.0
-    breakeven_buffer_pct: float = 0.0
-    enable_trailing_stop: bool = False
-    trailing_stop_activation_rr: float = 1.0
-    trailing_stop_atr_multiple: float = 2.5
 
 
 def _resolve_entry_price(entry_time: pd.Timestamp, entry_df: pd.DataFrame) -> float:
@@ -43,16 +32,16 @@ def build_trades(
     tp_col: str = "tp_pct",
     sl_col: str = "sl_pct",
     priority: TradeExitPriority = "tp",
-    fee_rate: float = 0.0005,
-    slippage_rate: float = 0.0,
-    entry_df: Optional[pd.DataFrame] = None,
-    max_stopouts_per_day: Optional[int] = None,
-    daily_loss_cap_pct: Optional[float] = None,
-    time_stop_bars: Optional[int] = None,
+    fee_rate: float = DEFAULT_EXECUTION.fee_rate,
+    slippage_rate: float = DEFAULT_EXECUTION.slippage_rate,
+    entry_df: pd.DataFrame | None = None,
+    max_stopouts_per_day: int | None = None,
+    daily_loss_cap_pct: float | None = None,
+    time_stop_bars: int | None = None,
     enable_partial_take_profit: bool = False,
     partial_tp_fraction: float = 0.0,
     partial_tp_rr: float = 1.0,
-    breakeven_buffer_pct: float = 0.0,
+    breakeven_buffer_pct: float = DEFAULT_EXECUTION.breakeven_buffer_pct,
     enable_trailing_stop: bool = False,
     trailing_stop_activation_rr: float = 1.0,
     trailing_stop_atr_multiple: float = 2.5,
@@ -74,10 +63,7 @@ def build_trades(
     closes = df["close"].to_numpy(float)
     tp_pcts = df[tp_col].to_numpy(float)
     sl_pcts = df[sl_col].to_numpy(float)
-    if "ATR" in df.columns:
-        atr_values = df["ATR"].to_numpy(dtype=float)
-    else:
-        atr_values = np.full(len(df), np.nan, dtype=float)
+    atr_values = df.get("ATR", pd.Series(np.nan, index=df.index)).to_numpy(float)
 
     n = len(df)
     trade_list: list[dict[str, object]] = []
@@ -88,11 +74,11 @@ def build_trades(
     signal_indices = np.flatnonzero(signals)
     trade_id = 0
 
-    base_partial_fraction = float(np.clip(partial_tp_fraction, 0.0, 1.0))
-    base_partial_enabled = enable_partial_take_profit and base_partial_fraction > 0.0
-    base_trailing_enabled = enable_trailing_stop and trailing_stop_atr_multiple > 0
-    base_partial_rr = float(max(partial_tp_rr, 0.0))
-    base_trailing_rr = float(max(trailing_stop_activation_rr, 0.0))
+    partial_fraction = float(np.clip(partial_tp_fraction, 0.0, 1.0))
+    partial_enabled = enable_partial_take_profit and partial_fraction > 0.0
+    trailing_enabled = enable_trailing_stop and trailing_stop_atr_multiple > 0
+    partial_rr = float(max(partial_tp_rr, 0.0))
+    trailing_rr = float(max(trailing_stop_activation_rr, 0.0))
 
     for sig_idx in signal_indices:
         entry_idx = sig_idx + 1
@@ -114,35 +100,32 @@ def build_trades(
         if daily_loss_cap_pct is not None and pnl_by_day[entry_day] <= -abs(daily_loss_cap_pct):
             continue
 
-        if entry_df is None:
-            entry_price = float(opens[entry_idx])
-        else:
-            entry_price = _resolve_entry_price(entry_time, entry_df)
+        entry_price = float(opens[entry_idx]) if entry_df is None else _resolve_entry_price(entry_time, entry_df)
 
         tp_price = entry_price * (1.0 + tp_pct)
-        sl_price = entry_price * (1.0 - sl_pct)
+        sl_price_initial = entry_price * (1.0 - sl_pct)
 
         max_exit_idx = n - 1
         if time_stop_bars is not None:
             max_exit_idx = min(max_exit_idx, entry_idx + max(time_stop_bars, 0))
 
-        exit_idx: Optional[int] = None
-        exit_price: Optional[float] = None
+        exit_idx: int | None = None
+        exit_price: float | None = None
         exit_reason = "open"
 
-        current_sl_price = float(sl_price)
+        current_sl_price = float(sl_price_initial)
         stop_source = "initial"
         risk_pct = float(sl_pct)
-        partial_enabled = base_partial_enabled and risk_pct > 0
-        trailing_enabled = base_trailing_enabled and risk_pct > 0
-        partial_fraction = base_partial_fraction if partial_enabled else 0.0
-        partial_price = entry_price * (1.0 + risk_pct * base_partial_rr) if partial_enabled else np.nan
+
+        partial_price = price_at_rr(entry_price, risk_pct, partial_rr) if partial_enabled else math.nan
+
+        trailing_activation_price = price_at_rr(entry_price, risk_pct, trailing_rr) if trailing_enabled else math.nan
+
         breakeven_price = entry_price * (1.0 + breakeven_buffer_pct)
-        trailing_activation_price = entry_price * (1.0 + risk_pct * base_trailing_rr) if trailing_enabled else np.nan
 
         partial_done = False
-        partial_exit_idx = np.nan
-        partial_exit_price = np.nan
+        partial_exit_idx = math.nan
+        partial_exit_price = math.nan
         partial_exit_time = pd.NaT
         partial_fraction_realized = 0.0
         position_fraction = 1.0
@@ -206,7 +189,9 @@ def build_trades(
                     exit_idx, exit_price, exit_reason = j, float(tp_price), "tp"
                 else:
                     exit_idx, exit_price = j, float(current_sl_price)
-                    exit_reason = "sl" if stop_source == "initial" else ("breakeven" if stop_source == "breakeven" else "trail")
+                    exit_reason = (
+                        "sl" if stop_source == "initial" else "breakeven" if stop_source == "breakeven" else "trail"
+                    )
                 break
             if hit_tp:
                 exit_idx, exit_price, exit_reason = j, float(tp_price), "tp"
@@ -225,9 +210,11 @@ def build_trades(
             exit_idx = max_exit_idx
             exit_price = float(closes[exit_idx])
             exit_reason = "time" if time_stop_bars is not None else "open"
+        assert exit_price is not None
+        assert exit_idx is not None
+        assert isinstance(exit_idx, (int, np.integer))
 
         holding_bars = exit_idx - entry_idx + 1
-        entry_effective = entry_price * (1.0 + fee_rate + slippage_rate)
 
         legs: list[tuple[float, float]] = []
         if partial_fraction_realized > 0 and np.isfinite(partial_exit_price):
@@ -236,15 +223,15 @@ def build_trades(
         if remaining_fraction > 0:
             legs.append((remaining_fraction, float(exit_price)))
 
-        gross_return_pct = 0.0
-        net_return_pct = 0.0
-        for frac, price in legs:
-            gross_leg = price / entry_price - 1.0
-            net_leg = (price * (1.0 - fee_rate - slippage_rate)) / entry_effective - 1.0
-            gross_return_pct += frac * gross_leg
-            net_return_pct += frac * net_leg
-        cost_pct = gross_return_pct - net_return_pct
+        gross_return_pct, net_return_pct, cost_pct = weighted_returns(
+            entry_price,
+            legs,
+            fee_rate=fee_rate,
+            slippage_rate=slippage_rate,
+        )
 
+        partial_exit_idx_val = partial_exit_idx if np.isfinite(partial_exit_idx) else math.nan
+        partial_exit_price_val = partial_exit_price if np.isfinite(partial_exit_price) else math.nan
         trade_list.append(
             {
                 "trade_id": trade_id,
@@ -257,7 +244,7 @@ def build_trades(
                 "entry_price": float(entry_price),
                 "exit_price": float(exit_price),
                 "tp_price": float(tp_price),
-                "sl_price": float(sl_price),
+                "sl_price": float(sl_price_initial),
                 "tp_pct": float(tp_pct),
                 "sl_pct": float(sl_pct),
                 "gross_return_pct": float(gross_return_pct),
@@ -266,9 +253,9 @@ def build_trades(
                 "outcome": exit_reason,
                 "holding_bars": int(holding_bars),
                 "signal_type": sig_type,
-                "partial_exit_idx": float(partial_exit_idx) if np.isfinite(partial_exit_idx) else np.nan,
+                "partial_exit_idx": partial_exit_idx_val,
                 "partial_exit_time": partial_exit_time,
-                "partial_exit_price": float(partial_exit_price) if np.isfinite(partial_exit_price) else np.nan,
+                "partial_exit_price": partial_exit_price_val,
                 "partial_fraction": float(partial_fraction_realized),
                 "final_stop_price": float(current_sl_price),
                 "final_stop_source": stop_source,
@@ -285,5 +272,3 @@ def build_trades(
         trade_id += 1
 
     return pd.DataFrame(trade_list)
-
-

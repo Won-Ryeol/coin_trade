@@ -1,0 +1,26 @@
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "B", "UP", "C4", "SIM"]
+ignore = ["C408"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+strict_optional = true
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers --maxfail=1 --cov=coin_trade"
+filterwarnings = [
+    "error",
+]
+testpaths = [
+    "tests",
+]
